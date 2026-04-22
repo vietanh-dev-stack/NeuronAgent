@@ -12,7 +12,11 @@ class LLMClient:
     """
 
     def __init__(self):
-        self._client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        kwargs = {"api_key": settings.OPENAI_API_KEY or "ollama"}
+        if settings.OPENAI_BASE_URL:
+            kwargs["base_url"] = settings.OPENAI_BASE_URL
+            
+        self._client = AsyncOpenAI(**kwargs)
         self.model = settings.OPENAI_MODEL
         self.max_tokens = settings.OPENAI_MAX_TOKENS
         self.temperature = settings.OPENAI_TEMPERATURE
@@ -33,7 +37,6 @@ class LLMClient:
             messages=messages,
             max_tokens=self.max_tokens,
             temperature=self.temperature,
-            stream=True,
         )
         if tools:
             kwargs["tools"] = tools

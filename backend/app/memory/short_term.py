@@ -1,47 +1,37 @@
 """
-Short-term memory: a sliding window of recent messages stored in Redis.
-Key format: session:{session_id}:messages (Redis List)
+Short-term memory: a sliding window of recent messages.
+Stored in-memory locally instead of Redis to bypass connection issues on Windows.
 """
-import json
 from typing import Any
-
-import redis.asyncio as aioredis
 
 from app.config import settings
 
 
 class ShortTermMemory:
     def __init__(self):
-        self._redis: aioredis.Redis | None = None
-
-    @property
-    def redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        return self._redis
-
-    def _key(self, session_id: str) -> str:
-        return f"session:{session_id}:messages"
+        # Store messages directly in memory instead of Redis
+        self._memory = {}
 
     async def add(self, session_id: str, role: str, content: str) -> None:
-        message = json.dumps({"role": role, "content": content})
-        key = self._key(session_id)
-        await self.redis.rpush(key, message)
+        if session_id not in self._memory:
+            self._memory[session_id] = []
+            
+        self._memory[session_id].append({"role": role, "content": content})
+        
         # Keep only the last N messages
-        await self.redis.ltrim(key, -settings.SHORT_TERM_WINDOW, -1)
-        await self.redis.expire(key, 60 * 60 * 24 * 7)  # 7 day TTL
+        if len(self._memory[session_id]) > settings.SHORT_TERM_WINDOW:
+            self._memory[session_id] = self._memory[session_id][-settings.SHORT_TERM_WINDOW:]
 
     async def get(self, session_id: str) -> list[dict[str, str]]:
-        key = self._key(session_id)
-        raw_messages = await self.redis.lrange(key, 0, -1)
-        return [json.loads(m) for m in raw_messages]
+        return self._memory.get(session_id, [])
 
     async def clear(self, session_id: str) -> None:
-        await self.redis.delete(self._key(session_id))
+        if session_id in self._memory:
+            del self._memory[session_id]
 
     async def close(self) -> None:
-        if self._redis:
-            await self._redis.aclose()
+        # In-memory dict does not need to be closed
+        pass
 
 
 short_term_memory = ShortTermMemory()

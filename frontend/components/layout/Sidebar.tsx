@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useChatStore } from "@/stores/chatStore";
 import { useSessions } from "@/hooks/useSessions";
 import { useAuth } from "@/hooks/useAuth";
-import { MessageSquare, Code2, Zap, Plus, Trash2, LogOut, ChevronLeft, ChevronRight, Bot } from "lucide-react";
+import { MessageSquare, Code2, Zap, Plus, Trash2, Pencil, LogOut, ChevronLeft, ChevronRight, Bot } from "lucide-react";
 import type { Session } from "@/types";
 import { truncate, formatDate } from "@/lib/utils";
 
@@ -16,7 +16,7 @@ const MODE_ICONS = {
 };
 
 export default function Sidebar() {
-  const { sessions, createSession, deleteSession } = useSessions();
+  const { sessions, createSession, deleteSession, renameSession } = useSessions();
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const sidebarOpen = useChatStore((s) => s.sidebarOpen);
   const toggleSidebar = useChatStore((s) => s.toggleSidebar);
@@ -24,6 +24,9 @@ export default function Sidebar() {
   const { logout } = useAuth();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const handleNew = async () => {
     setCreating(true);
@@ -40,6 +43,28 @@ export default function Sidebar() {
     e.stopPropagation();
     await deleteSession(id);
     if (activeSessionId === id) router.push("/chat");
+  };
+
+  const handleEditClick = (e: React.MouseEvent, id: string, title: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingId(id);
+    setEditTitle(title);
+  };
+
+  const handleRenameConfirm = async (id: string) => {
+    if (editTitle.trim()) {
+      await renameSession(id, editTitle.trim());
+    }
+    setEditingId(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === "Enter") {
+      handleRenameConfirm(id);
+    } else if (e.key === "Escape") {
+      setEditingId(null);
+    }
   };
 
   return (
@@ -95,26 +120,47 @@ export default function Sidebar() {
               const Icon = MODE_ICONS[s.mode] ?? MessageSquare;
               const isActive = s.id === activeSessionId;
               return (
-                <Link
+                <div
                   key={s.id}
-                  href={`/chat/${s.id}`}
                   className={`session-item ${isActive ? "active" : ""}`}
                   id={`session-${s.id}`}
                 >
-                  <Icon size={14} className="session-icon" />
-                  <div className="session-body">
-                    <span className="session-title">{truncate(s.title, 32)}</span>
-                    <span className="session-date">{formatDate(s.last_message_at)}</span>
+                  <Link href={`/chat/${s.id}`} className="session-link">
+                    <Icon size={14} className="session-icon" />
+                    <div className="session-body">
+                      {editingId === s.id ? (
+                        <input
+                          className="session-rename-input"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, s.id)}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          autoFocus
+                          onBlur={() => handleRenameConfirm(s.id)}
+                        />
+                      ) : (
+                        <span className="session-title">{truncate(s.title, 32)}</span>
+                      )}
+                      <span className="session-date">{formatDate(s.last_message_at)}</span>
+                    </div>
+                  </Link>
+                  <div className="session-actions">
+                    <button
+                      className="session-action-btn"
+                      onClick={(e) => handleEditClick(e, s.id, s.title)}
+                      title="Rename session"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      className="session-action-btn session-delete-btn"
+                      onClick={(e) => handleDelete(e, s.id)}
+                      title="Delete session"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
-                  <button
-                    className="session-delete"
-                    onClick={(e) => handleDelete(e, s.id)}
-                    title="Delete session"
-                    aria-label={`Delete session ${s.title}`}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -273,18 +319,27 @@ export default function Sidebar() {
         .session-item {
           display: flex;
           align-items: center;
-          gap: 0.6rem;
-          padding: 0.6rem 0.75rem;
+          justify-content: space-between;
+          padding: 0 0.25rem 0 0;
           border-radius: var(--radius-md);
-          text-decoration: none;
           color: var(--text-secondary);
           transition: all var(--transition);
           min-height: 52px;
           position: relative;
         }
 
+        .session-link {
+          display: flex;
+          align-items: center;
+          flex: 1;
+          gap: 0.6rem;
+          padding: 0.6rem 0.5rem;
+          text-decoration: none;
+          color: inherit;
+          overflow: hidden;
+        }
+
         .session-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .session-item:hover .session-delete { opacity: 1; }
         .session-item.active {
           background: rgba(139, 92, 246, 0.1);
           color: var(--text-primary);
@@ -302,6 +357,20 @@ export default function Sidebar() {
           overflow: hidden;
         }
 
+        .session-rename-input {
+          font-size: 13px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          color: var(--text-primary);
+          padding: 2px 4px;
+          border-radius: 4px;
+          outline: none;
+          width: 100%;
+        }
+        .session-rename-input:focus {
+          border-color: var(--accent-purple);
+        }
+
         .session-title {
           font-size: 13.5px;
           font-weight: 500;
@@ -316,8 +385,22 @@ export default function Sidebar() {
           white-space: nowrap;
         }
 
-        .session-delete {
-          opacity: 0;
+        .session-actions {
+          opacity: 0.4;
+          pointer-events: auto;
+          display: flex;
+          align-items: center;
+          gap: 0.2rem;
+          transition: all var(--transition);
+          flex-shrink: 0;
+          padding-right: 0.25rem;
+        }
+        
+        .session-item:hover .session-actions {
+          opacity: 1;
+        }
+
+        .session-action-btn {
           background: none;
           border: none;
           color: var(--text-muted);
@@ -327,10 +410,10 @@ export default function Sidebar() {
           display: flex;
           align-items: center;
           transition: all var(--transition);
-          flex-shrink: 0;
         }
 
-        .session-delete:hover { color: var(--accent-red); }
+        .session-action-btn:hover { color: var(--text-primary); background: var(--bg-elevated); }
+        .session-delete-btn:hover { color: var(--accent-red); background: rgba(239,68,68,0.1); }
 
         .sidebar-footer {
           border-top: 1px solid var(--border);

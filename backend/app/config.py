@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
 
     # LLM
-    OPENAI_API_KEY: str = ""
+    OPENAI_API_KEY: str = "ollama"
+    OPENAI_BASE_URL: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TEMPERATURE: float = 0.7
